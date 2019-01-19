@@ -89,8 +89,8 @@ use http::{Method, Request, Response, Uri, Version};
 use http::header::{HeaderValue, HOST};
 use http::uri::Scheme;
 
-use body::{Body, Payload};
-use common::{lazy as hyper_lazy, Lazy};
+use crate::body::{Body, Payload};
+use crate::common::{lazy as hyper_lazy, Lazy};
 use self::connect::{Alpn, Connect, Connected, Destination};
 use self::pool::{Key as PoolKey, Pool, Poolable, Pooled, Reservation};
 
@@ -237,11 +237,11 @@ where C: Connect + Sync + 'static,
             Version::HTTP_11 => (),
             Version::HTTP_10 => if is_http_connect {
                 debug!("CONNECT is not allowed for HTTP/1.0");
-                return ResponseFuture::new(Box::new(future::err(::Error::new_user_unsupported_request_method())));
+                return ResponseFuture::new(Box::new(future::err(crate::Error::new_user_unsupported_request_method())));
             },
             other => if self.config.ver != Ver::Http2 {
                 error!("Request has unsupported version \"{:?}\"", other);
-                return ResponseFuture::new(Box::new(future::err(::Error::new_user_unsupported_version())));
+                return ResponseFuture::new(Box::new(future::err(crate::Error::new_user_unsupported_version())));
             }
         };
 
@@ -266,7 +266,7 @@ where C: Connect + Sync + 'static,
             },
             _ => {
                 debug!("Client requires absolute-form URIs, received: {:?}", uri);
-                return ResponseFuture::new(Box::new(future::err(::Error::new_user_absolute_uri_required())))
+                return ResponseFuture::new(Box::new(future::err(crate::Error::new_user_absolute_uri_required())))
             }
         };
 
@@ -274,7 +274,7 @@ where C: Connect + Sync + 'static,
         ResponseFuture::new(Box::new(self.retryably_send_request(req, pool_key)))
     }
 
-    fn retryably_send_request(&self, req: Request<B>, pool_key: PoolKey) -> impl Future<Item=Response<Body>, Error=::Error> {
+    fn retryably_send_request(&self, req: Request<B>, pool_key: PoolKey) -> impl Future<Item=Response<Body>, Error=crate::Error> {
         let client = self.clone();
         let uri = req.uri().clone();
 
@@ -337,7 +337,7 @@ where C: Connect + Sync + 'static,
                 };
             } else if req.method() == &Method::CONNECT {
                 debug!("client does not support CONNECT requests over HTTP2");
-                return Either::A(future::err(ClientError::Normal(::Error::new_user_unsupported_request_method())));
+                return Either::A(future::err(ClientError::Normal(crate::Error::new_user_unsupported_request_method())));
             }
 
             let fut = pooled.send_request_retryable(req)
@@ -495,7 +495,7 @@ where C: Connect + Sync + 'static,
     }
 
     fn connect_to(&self, uri: Uri, pool_key: PoolKey)
-        -> impl Lazy<Item=Pooled<PoolClient<B>>, Error=::Error>
+        -> impl Lazy<Item=Pooled<PoolClient<B>>, Error=crate::Error>
     {
         let executor = self.conn_builder.exec.clone();
         let pool = self.pool.clone();
@@ -515,12 +515,12 @@ where C: Connect + Sync + 'static,
             let connecting = match pool.connecting(&pool_key, ver) {
                 Some(lock) => lock,
                 None => {
-                    let canceled = ::Error::new_canceled(Some("HTTP/2 connection in progress"));
+                    let canceled = crate::Error::new_canceled(Some("HTTP/2 connection in progress"));
                     return Either::B(future::err(canceled));
                 }
             };
             Either::A(connector.connect(dst)
-                .map_err(::Error::new_connect)
+                .map_err(crate::Error::new_connect)
                 .and_then(move |(io, connected)| {
                     // If ALPN is h2 and we aren't http2_only already,
                     // then we need to convert our pool checkout into
@@ -534,7 +534,7 @@ where C: Connect + Sync + 'static,
                             None => {
                                 // Another connection has already upgraded,
                                 // the pool checkout should finish up for us.
-                                let canceled = ::Error::new_canceled(Some("ALPN upgraded to HTTP/2"));
+                                let canceled = crate::Error::new_canceled(Some("ALPN upgraded to HTTP/2"));
                                 return Either::B(future::err(canceled));
                             }
                         }
@@ -599,11 +599,11 @@ impl<C, B> fmt::Debug for Client<C, B> {
 /// This is returned by `Client::request` (and `Client::get`).
 #[must_use = "futures do nothing unless polled"]
 pub struct ResponseFuture {
-    inner: Box<Future<Item=Response<Body>, Error=::Error> + Send>,
+    inner: Box<Future<Item=Response<Body>, Error=crate::Error> + Send>,
 }
 
 impl ResponseFuture {
-    fn new(fut: Box<Future<Item=Response<Body>, Error=::Error> + Send>) -> Self {
+    fn new(fut: Box<Future<Item=Response<Body>, Error=crate::Error> + Send>) -> Self {
         Self {
             inner: fut,
         }
@@ -618,7 +618,7 @@ impl fmt::Debug for ResponseFuture {
 
 impl Future for ResponseFuture {
     type Item = Response<Body>;
-    type Error = ::Error;
+    type Error = crate::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         self.inner.poll()
@@ -638,7 +638,7 @@ enum PoolTx<B> {
 }
 
 impl<B> PoolClient<B> {
-    fn poll_ready(&mut self) -> Poll<(), ::Error> {
+    fn poll_ready(&mut self) -> Poll<(), crate::Error> {
         match self.tx {
             PoolTx::Http1(ref mut tx) => tx.poll_ready(),
             PoolTx::Http2(_) => Ok(Async::Ready(())),
@@ -672,7 +672,7 @@ impl<B> PoolClient<B> {
 }
 
 impl<B: Payload + 'static> PoolClient<B> {
-    fn send_request_retryable(&mut self, req: Request<B>) -> impl Future<Item = Response<Body>, Error = (::Error, Option<Request<B>>)>
+    fn send_request_retryable(&mut self, req: Request<B>) -> impl Future<Item = Response<Body>, Error = (crate::Error, Option<Request<B>>)>
     where
         B: Send,
     {
@@ -724,17 +724,17 @@ where
 // FIXME: allow() required due to `impl Trait` leaking types to this lint
 #[allow(missing_debug_implementations)]
 enum ClientError<B> {
-    Normal(::Error),
+    Normal(crate::Error),
     Canceled {
         connection_reused: bool,
         req: Request<B>,
-        reason: ::Error,
+        reason: crate::Error,
     }
 }
 
 impl<B> ClientError<B> {
     fn map_with_reused(conn_reused: bool)
-        -> impl Fn((::Error, Option<Request<B>>)) -> Self
+        -> impl Fn((crate::Error, Option<Request<B>>)) -> Self
     {
         move |(err, orig_req)| {
             if let Some(req) = orig_req {

@@ -7,12 +7,12 @@ use futures::{Async, Future, Poll, Stream};
 use h2;
 use http::HeaderMap;
 
-use common::Never;
+use crate::common::Never;
 use super::internal::{FullDataArg, FullDataRet};
 use super::{Chunk, Payload};
-use upgrade::OnUpgrade;
+use crate::upgrade::OnUpgrade;
 
-type BodySender = mpsc::Sender<Result<Chunk, ::Error>>;
+type BodySender = mpsc::Sender<Result<Chunk, crate::Error>>;
 
 /// A stream of `Chunk`s, used when receiving bodies.
 ///
@@ -32,7 +32,7 @@ enum Kind {
     Chan {
         content_length: Option<u64>,
         abort_rx: oneshot::Receiver<()>,
-        rx: mpsc::Receiver<Result<Chunk, ::Error>>,
+        rx: mpsc::Receiver<Result<Chunk, crate::Error>>,
     },
     H2 {
         content_length: Option<u64>,
@@ -198,7 +198,7 @@ impl Body {
             }))
     }
 
-    fn poll_eof(&mut self) -> Poll<Option<Chunk>, ::Error> {
+    fn poll_eof(&mut self) -> Poll<Option<Chunk>, crate::Error> {
         match self.take_delayed_eof() {
             Some(DelayEof::NotEof(mut delay)) => {
                 match self.poll_inner() {
@@ -236,7 +236,7 @@ impl Body {
         }
     }
 
-    fn poll_inner(&mut self) -> Poll<Option<Chunk>, ::Error> {
+    fn poll_inner(&mut self) -> Poll<Option<Chunk>, crate::Error> {
         match self.kind {
             Kind::Once(ref mut val) => Ok(Async::Ready(val.take())),
             Kind::Chan {
@@ -245,7 +245,7 @@ impl Body {
                 ref mut abort_rx,
             } => {
                 if let Ok(Async::Ready(())) = abort_rx.poll() {
-                    return Err(::Error::new_body_write("body write aborted"));
+                    return Err(crate::Error::new_body_write("body write aborted"));
                 }
 
                 match rx.poll().expect("mpsc cannot error") {
@@ -265,16 +265,16 @@ impl Body {
                 recv: ref mut h2, ..
             } => h2
                 .poll()
-                .map(|async| {
-                    async.map(|opt| {
+                .map(|r#async| {
+                    r#async.map(|opt| {
                         opt.map(|bytes| {
                             let _ = h2.release_capacity().release_capacity(bytes.len());
                             Chunk::from(bytes)
                         })
                     })
                 })
-                .map_err(::Error::new_body),
-            Kind::Wrapped(ref mut s) => s.poll().map_err(::Error::new_body),
+                .map_err(crate::Error::new_body),
+            Kind::Wrapped(ref mut s) => s.poll().map_err(crate::Error::new_body),
         }
     }
 }
@@ -289,7 +289,7 @@ impl Default for Body {
 
 impl Payload for Body {
     type Data = Chunk;
-    type Error = ::Error;
+    type Error = crate::Error;
 
     fn poll_data(&mut self) -> Poll<Option<Self::Data>, Self::Error> {
         self.poll_eof()
@@ -299,7 +299,7 @@ impl Payload for Body {
         match self.kind {
             Kind::H2 {
                 recv: ref mut h2, ..
-            } => h2.poll_trailers().map_err(::Error::new_h2),
+            } => h2.poll_trailers().map_err(crate::Error::new_h2),
             _ => Ok(Async::Ready(None)),
         }
     }
@@ -334,7 +334,7 @@ impl Payload for Body {
 
 impl Stream for Body {
     type Item = Chunk;
-    type Error = ::Error;
+    type Error = crate::Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
         self.poll_data()
@@ -349,13 +349,13 @@ impl fmt::Debug for Body {
 
 impl Sender {
     /// Check to see if this `Sender` can send more data.
-    pub fn poll_ready(&mut self) -> Poll<(), ::Error> {
+    pub fn poll_ready(&mut self) -> Poll<(), crate::Error> {
         match self.abort_tx.poll_cancel() {
-            Ok(Async::Ready(())) | Err(_) => return Err(::Error::new_closed()),
+            Ok(Async::Ready(())) | Err(_) => return Err(crate::Error::new_closed()),
             Ok(Async::NotReady) => (),
         }
 
-        self.tx.poll_ready().map_err(|_| ::Error::new_closed())
+        self.tx.poll_ready().map_err(|_| crate::Error::new_closed())
     }
 
     /// Sends data on this channel.
@@ -376,7 +376,7 @@ impl Sender {
         let _ = self.abort_tx.send(());
     }
 
-    pub(crate) fn send_error(&mut self, err: ::Error) {
+    pub(crate) fn send_error(&mut self, err: crate::Error) {
         let _ = self.tx.try_send(Err(err));
     }
 }

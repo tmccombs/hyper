@@ -8,9 +8,9 @@ use http::{HeaderMap, Method, Version};
 use http::header::{HeaderValue, CONNECTION};
 use tokio_io::{AsyncRead, AsyncWrite};
 
-use ::Chunk;
-use proto::{BodyLength, DecodedLength, MessageHead};
-use headers::connection_keep_alive;
+use crate::Chunk;
+use crate::proto::{BodyLength, DecodedLength, MessageHead};
+use crate::headers::connection_keep_alive;
 use super::io::{Buffered};
 use super::{EncodedBuf, Encode, Encoder, /*Decode,*/ Decoder, Http1Transaction, ParseContext};
 
@@ -84,7 +84,7 @@ where I: AsyncRead + AsyncWrite,
         self.io.into_inner()
     }
 
-    pub fn pending_upgrade(&mut self) -> Option<::upgrade::Pending> {
+    pub fn pending_upgrade(&mut self) -> Option<crate::upgrade::Pending> {
         self.state.upgrade.take()
     }
 
@@ -130,7 +130,7 @@ where I: AsyncRead + AsyncWrite,
         read_buf.len() >= 24 && read_buf[..24] == *H2_PREFACE
     }
 
-    pub fn read_head(&mut self) -> Poll<Option<(MessageHead<T::Incoming>, DecodedLength, bool)>, ::Error> {
+    pub fn read_head(&mut self) -> Poll<Option<(MessageHead<T::Incoming>, DecodedLength, bool)>, crate::Error> {
         debug_assert!(self.can_read_head());
         trace!("Conn::read_head");
 
@@ -169,7 +169,7 @@ where I: AsyncRead + AsyncWrite,
         Ok(Async::Ready(Some((msg.head, msg.decode, msg.wants_upgrade))))
     }
 
-    fn on_read_head_error<Z>(&mut self, e: ::Error) -> Poll<Option<Z>, ::Error> {
+    fn on_read_head_error<Z>(&mut self, e: crate::Error) -> Poll<Option<Z>, crate::Error> {
         // If we are currently waiting on a message, then an empty
         // message should be reported as an error. If not, it is just
         // the connection closing gracefully.
@@ -228,15 +228,15 @@ where I: AsyncRead + AsyncWrite,
         ret
     }
 
-    pub fn read_keep_alive(&mut self) -> Result<(), ::Error> {
+    pub fn read_keep_alive(&mut self) -> Result<(), crate::Error> {
         debug_assert!(!self.can_read_head() && !self.can_read_body());
 
         trace!("read_keep_alive; is_mid_message={}", self.is_mid_message());
 
         if self.is_mid_message() {
-            self.mid_message_detect_eof().map_err(::Error::new_io)
+            self.mid_message_detect_eof().map_err(crate::Error::new_io)
         } else {
-            self.require_empty_read().map_err(::Error::new_io)
+            self.require_empty_read().map_err(crate::Error::new_io)
         }
     }
 
@@ -581,12 +581,12 @@ where I: AsyncRead + AsyncWrite,
     //
     // - Client: there is nothing we can do
     // - Server: if Response hasn't been written yet, we can send a 4xx response
-    fn on_parse_error(&mut self, err: ::Error) -> ::Result<()> {
+    fn on_parse_error(&mut self, err: crate::Error) -> crate::Result<()> {
 
         match self.state.writing {
             Writing::Init => {
                 if self.has_h2_prefix() {
-                    return Err(::Error::new_version_h2())
+                    return Err(crate::Error::new_version_h2())
                 }
                 if let Some(msg) = T::on_error(&err) {
                     // Drop the cached headers so as to not trigger a debug
@@ -641,7 +641,7 @@ where I: AsyncRead + AsyncWrite,
         }
     }
 
-    pub fn take_error(&mut self) -> ::Result<()> {
+    pub fn take_error(&mut self) -> crate::Result<()> {
         if let Some(err) = self.state.error.take() {
             Err(err)
         } else {
@@ -649,7 +649,7 @@ where I: AsyncRead + AsyncWrite,
         }
     }
 
-    pub(super) fn on_upgrade(&mut self) -> ::upgrade::OnUpgrade {
+    pub(super) fn on_upgrade(&mut self) -> crate::upgrade::OnUpgrade {
         trace!("{}: prepare possible HTTP upgrade", T::LOG);
         self.state.prepare_upgrade()
     }
@@ -676,7 +676,7 @@ struct State {
     cached_headers: Option<HeaderMap>,
     /// If an error occurs when there wasn't a direct way to return it
     /// back to the user, this is set.
-    error: Option<::Error>,
+    error: Option<crate::Error>,
     /// Current keep-alive status.
     keep_alive: KA,
     /// If mid-message, the HTTP Method that started it.
@@ -693,7 +693,7 @@ struct State {
     /// State of allowed writes
     writing: Writing,
     /// An expected pending HTTP upgrade.
-    upgrade: Option<::upgrade::Pending>,
+    upgrade: Option<crate::upgrade::Pending>,
     /// Either HTTP/1.0 or 1.1 connection
     version: Version,
 }
@@ -880,9 +880,9 @@ impl State {
         }
     }
 
-    fn prepare_upgrade(&mut self) -> ::upgrade::OnUpgrade {
+    fn prepare_upgrade(&mut self) -> crate::upgrade::OnUpgrade {
         debug_assert!(self.upgrade.is_none());
-        let (tx, rx) = ::upgrade::pending();
+        let (tx, rx) = crate::upgrade::pending();
         self.upgrade = Some(tx);
         rx
     }

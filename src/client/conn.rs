@@ -17,12 +17,12 @@ use futures::{Async, Future, Poll};
 use futures::future::{self, Either, Executor};
 use tokio_io::{AsyncRead, AsyncWrite};
 
-use body::Payload;
-use common::Exec;
-use upgrade::Upgraded;
-use proto;
+use crate::body::Payload;
+use crate::common::Exec;
+use crate::upgrade::Upgraded;
+use crate::proto;
 use super::dispatch;
-use {Body, Request, Response};
+use crate::{Body, Request, Response};
 
 type Http1Dispatcher<T, B, R> = proto::dispatch::Dispatcher<
     proto::dispatch::Client<B>,
@@ -38,7 +38,7 @@ type ConnEither<T, B> = Either<
 /// Returns a `Handshake` future over some IO.
 ///
 /// This is a shortcut for `Builder::new().handshake(io)`.
-pub fn handshake<T>(io: T) -> Handshake<T, ::Body>
+pub fn handshake<T>(io: T) -> Handshake<T, crate::Body>
 where
     T: AsyncRead + AsyncWrite + Send + 'static,
 {
@@ -95,7 +95,7 @@ pub struct Handshake<T, B> {
 pub struct ResponseFuture {
     // for now, a Box is used to hide away the internal `B`
     // that can be returned if canceled
-    inner: Box<Future<Item=Response<Body>, Error=::Error> + Send>,
+    inner: Box<Future<Item=Response<Body>, Error=crate::Error> + Send>,
 }
 
 /// Deconstructed parts of a `Connection`.
@@ -142,7 +142,7 @@ impl<B> SendRequest<B>
     /// Polls to determine whether this sender can be used yet for a request.
     ///
     /// If the associated connection is closed, this returns an Error.
-    pub fn poll_ready(&mut self) -> Poll<(), ::Error> {
+    pub fn poll_ready(&mut self) -> Poll<(), crate::Error> {
         self.dispatch.poll_ready()
     }
 
@@ -232,7 +232,7 @@ where
             },
             Err(_req) => {
                 debug!("connection was not ready");
-                let err = ::Error::new_canceled(Some("connection was not ready"));
+                let err = crate::Error::new_canceled(Some("connection was not ready"));
                 Either::B(future::err(err))
             }
         };
@@ -242,7 +242,7 @@ where
         }
     }
 
-    pub(crate) fn send_request_retryable(&mut self, req: Request<B>) -> impl Future<Item = Response<Body>, Error = (::Error, Option<Request<B>>)>
+    pub(crate) fn send_request_retryable(&mut self, req: Request<B>) -> impl Future<Item = Response<Body>, Error = (crate::Error, Option<Request<B>>)>
     where
         B: Send,
     {
@@ -259,7 +259,7 @@ where
             },
             Err(req) => {
                 debug!("connection was not ready");
-                let err = ::Error::new_canceled(Some("connection was not ready"));
+                let err = crate::Error::new_canceled(Some("connection was not ready"));
                 Either::B(future::err((err, Some(req))))
             }
         }
@@ -302,7 +302,7 @@ impl<B> Http2SendRequest<B>
 where
     B: Payload + 'static,
 {
-    pub(super) fn send_request_retryable(&mut self, req: Request<B>) -> impl Future<Item=Response<Body>, Error=(::Error, Option<Request<B>>)>
+    pub(super) fn send_request_retryable(&mut self, req: Request<B>) -> impl Future<Item=Response<Body>, Error=(crate::Error, Option<Request<B>>)>
     where
         B: Send,
     {
@@ -319,7 +319,7 @@ where
             },
             Err(req) => {
                 debug!("connection was not ready");
-                let err = ::Error::new_canceled(Some("connection was not ready"));
+                let err = crate::Error::new_canceled(Some("connection was not ready"));
                 Either::B(future::err((err, Some(req))))
             }
         }
@@ -373,7 +373,7 @@ where
     /// upgrade. Once the upgrade is completed, the connection would be "done",
     /// but it is not desired to actally shutdown the IO object. Instead you
     /// would take it back using `into_parts`.
-    pub fn poll_without_shutdown(&mut self) -> Poll<(), ::Error> {
+    pub fn poll_without_shutdown(&mut self) -> Poll<(), crate::Error> {
         match self.inner.as_mut().expect("already upgraded") {
             &mut Either::A(ref mut h1) => {
                 h1.poll_without_shutdown()
@@ -391,7 +391,7 @@ where
     B: Payload + 'static,
 {
     type Item = ();
-    type Error = ::Error;
+    type Error = crate::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         match try_ready!(self.inner.poll()) {
@@ -494,7 +494,7 @@ where
     B: Payload + 'static,
 {
     type Item = (SendRequest<B>, Connection<T, B>);
-    type Error = ::Error;
+    type Error = crate::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let io = self.io.take().expect("polled more than once");
@@ -540,7 +540,7 @@ impl<T, B> fmt::Debug for Handshake<T, B> {
 
 impl Future for ResponseFuture {
     type Item = Response<Body>;
-    type Error = ::Error;
+    type Error = crate::Error;
 
     #[inline]
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
@@ -559,7 +559,7 @@ impl fmt::Debug for ResponseFuture {
 
 impl<B> Future for WhenReady<B> {
     type Item = SendRequest<B>;
-    type Error = ::Error;
+    type Error = crate::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let mut tx = self.tx.take().expect("polled after complete");

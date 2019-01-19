@@ -6,7 +6,7 @@ use futures::future::poll_fn;
 use futures::sync::oneshot;
 use tokio::runtime::current_thread::Runtime;
 
-use mock::MockConnector;
+use crate::mock::MockConnector;
 use super::*;
 
 #[test]
@@ -20,7 +20,7 @@ fn retryable_request() {
     let sock2 = connector.mock("http://mock.local");
 
     let client = Client::builder()
-        .build::<_, ::Body>(connector);
+        .build::<_, crate::Body>(connector);
 
     client.pool.no_timer();
 
@@ -67,7 +67,7 @@ fn conn_reset_after_write() {
     let sock1 = connector.mock("http://mock.local");
 
     let client = Client::builder()
-        .build::<_, ::Body>(connector);
+        .build::<_, crate::Body>(connector);
 
     client.pool.no_timer();
 
@@ -104,7 +104,7 @@ fn conn_reset_after_write() {
     }).map_err(|e: ::std::io::Error| panic!("srv2 poll_fn error: {}", e));
     let err = rt.block_on(res2.join(srv2)).expect_err("res2");
     match err.kind() {
-        &::error::Kind::Incomplete => (),
+        &crate::error::Kind::Incomplete => (),
         other => panic!("expected Incomplete, found {:?}", other)
     }
 }
@@ -122,11 +122,11 @@ fn checkout_win_allows_connect_future_to_be_pooled() {
     let sock2 = connector.mock_fut("http://mock.local", rx);
 
     let client = Client::builder()
-        .build::<_, ::Body>(connector);
+        .build::<_, crate::Body>(connector);
 
     client.pool.no_timer();
 
-    let uri = "http://mock.local/a".parse::<::Uri>().expect("uri parse");
+    let uri = "http://mock.local/a".parse::<crate::Uri>().expect("uri parse");
 
     // First request just sets us up to have a connection able to be put
     // back in the pool. *However*, it doesn't insert immediately. The

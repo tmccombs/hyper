@@ -3,7 +3,7 @@ use std::fmt;
 
 use futures::{Future, IntoFuture};
 
-use body::Payload;
+use crate::body::Payload;
 use super::Service;
 
 /// An asynchronous constructor of `Service`s.

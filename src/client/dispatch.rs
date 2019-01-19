@@ -2,10 +2,10 @@ use futures::{Async, Poll, Stream};
 use futures::sync::{mpsc, oneshot};
 use want;
 
-use common::Never;
+use crate::common::Never;
 
-pub type RetryPromise<T, U> = oneshot::Receiver<Result<U, (::Error, Option<T>)>>;
-pub type Promise<T> = oneshot::Receiver<Result<T, ::Error>>;
+pub type RetryPromise<T, U> = oneshot::Receiver<Result<U, (crate::Error, Option<T>)>>;
+pub type Promise<T> = oneshot::Receiver<Result<T, crate::Error>>;
 
 pub fn channel<T, U>() -> (Sender<T, U>, Receiver<T, U>) {
     let (tx, rx) = mpsc::unbounded();
@@ -51,9 +51,9 @@ pub struct UnboundedSender<T, U> {
 }
 
 impl<T, U> Sender<T, U> {
-    pub fn poll_ready(&mut self) -> Poll<(), ::Error> {
+    pub fn poll_ready(&mut self) -> Poll<(), crate::Error> {
         self.giver.poll_want()
-            .map_err(|_| ::Error::new_closed())
+            .map_err(|_| crate::Error::new_closed())
     }
 
     pub fn is_ready(&self) -> bool {
@@ -167,14 +167,14 @@ struct Envelope<T, U>(Option<(T, Callback<T, U>)>);
 impl<T, U> Drop for Envelope<T, U> {
     fn drop(&mut self) {
         if let Some((val, cb)) = self.0.take() {
-            let _ = cb.send(Err((::Error::new_canceled(None::<::Error>), Some(val))));
+            let _ = cb.send(Err((crate::Error::new_canceled(None::<crate::Error>), Some(val))));
         }
     }
 }
 
 pub enum Callback<T, U> {
-    Retry(oneshot::Sender<Result<U, (::Error, Option<T>)>>),
-    NoRetry(oneshot::Sender<Result<U, ::Error>>),
+    Retry(oneshot::Sender<Result<U, (crate::Error, Option<T>)>>),
+    NoRetry(oneshot::Sender<Result<U, crate::Error>>),
 }
 
 impl<T, U> Callback<T, U> {
@@ -185,7 +185,7 @@ impl<T, U> Callback<T, U> {
         }
     }
 
-    pub fn send(self, val: Result<U, (::Error, Option<T>)>) {
+    pub fn send(self, val: Result<U, (crate::Error, Option<T>)>) {
         match self {
             Callback::Retry(tx) => {
                 let _ = tx.send(val);
@@ -228,7 +228,7 @@ mod tests {
                     .expect_err("promise should error");
 
                 match (err.0.kind(), err.1) {
-                    (&::error::Kind::Canceled, Some(_)) => (),
+                    (&crate::error::Kind::Canceled, Some(_)) => (),
                     e => panic!("expected Error::Cancel(_), found {:?}", e),
                 }
 
@@ -280,8 +280,8 @@ mod tests {
             ::futures::future::lazy(|| {
                 let _ = tx.send(1).unwrap();
                 loop {
-                    let async = rx.poll().unwrap();
-                    if async.is_not_ready() {
+                    let r#async = rx.poll().unwrap();
+                    if r#async.is_not_ready() {
                         break;
                     }
                 }

@@ -20,13 +20,13 @@ use futures::future::{Either, Executor};
 use tokio_io::{AsyncRead, AsyncWrite};
 #[cfg(feature = "runtime")] use tokio_reactor::Handle;
 
-use body::{Body, Payload};
-use common::exec::{Exec, H2Exec, NewSvcExec};
-use common::io::Rewind;
-use error::{Kind, Parse};
-use proto;
-use service::{MakeServiceRef, Service};
-use upgrade::Upgraded;
+use crate::body::{Body, Payload};
+use crate::common::exec::{Exec, H2Exec, NewSvcExec};
+use crate::common::io::Rewind;
+use crate::error::{Kind, Parse};
+use crate::proto;
+use crate::service::{MakeServiceRef, Service};
+use crate::upgrade::Upgraded;
 
 pub(super) use self::spawn_all::NoopWatcher;
 use self::spawn_all::NewSvcTask;
@@ -372,7 +372,7 @@ impl<E> Http<E> {
     /// `make_service` object provided, creating a new service per
     /// connection.
     #[cfg(feature = "runtime")]
-    pub fn serve_addr<S, Bd>(&self, addr: &SocketAddr, make_service: S) -> ::Result<Serve<AddrIncoming, S, E>>
+    pub fn serve_addr<S, Bd>(&self, addr: &SocketAddr, make_service: S) -> crate::Result<Serve<AddrIncoming, S, E>>
     where
         S: MakeServiceRef<
             AddrStream,
@@ -397,7 +397,7 @@ impl<E> Http<E> {
     /// `make_service` object provided, creating a new service per
     /// connection.
     #[cfg(feature = "runtime")]
-    pub fn serve_addr_handle<S, Bd>(&self, addr: &SocketAddr, handle: &Handle, make_service: S) -> ::Result<Serve<AddrIncoming, S, E>>
+    pub fn serve_addr_handle<S, Bd>(&self, addr: &SocketAddr, handle: &Handle, make_service: S) -> crate::Result<Serve<AddrIncoming, S, E>>
     where
         S: MakeServiceRef<
             AddrStream,
@@ -502,7 +502,7 @@ where
     /// upgrade. Once the upgrade is completed, the connection would be "done",
     /// but it is not desired to actally shutdown the IO object. Instead you
     /// would take it back using `into_parts`.
-    pub fn poll_without_shutdown(&mut self) -> Poll<(), ::Error> {
+    pub fn poll_without_shutdown(&mut self) -> Poll<(), crate::Error> {
         loop {
             let polled = match *self.conn.as_mut().unwrap() {
                 Either::A(ref mut h1) => h1.poll_without_shutdown(),
@@ -570,7 +570,7 @@ where
     E: H2Exec<S::Future, B>,
 {
     type Item = ();
-    type Error = ::Error;
+    type Error = crate::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         loop {
@@ -643,10 +643,10 @@ where
     E: H2Exec<<S::Service as Service>::Future, B>,
 {
     type Item = Connecting<I::Item, S::Future, E>;
-    type Error = ::Error;
+    type Error = crate::Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        if let Some(io) = try_ready!(self.incoming.poll().map_err(::Error::new_accept)) {
+        if let Some(io) = try_ready!(self.incoming.poll().map_err(crate::Error::new_accept)) {
             let new_fut = self.make_service.make_service_ref(&io);
             Ok(Async::Ready(Some(Connecting {
                 future: new_fut,
@@ -707,7 +707,7 @@ where
     B: Payload,
     E: H2Exec<<S::Service as Service>::Future, B>,
 {
-    pub(super) fn poll_watch<W>(&mut self, watcher: &W) -> Poll<(), ::Error>
+    pub(super) fn poll_watch<W>(&mut self, watcher: &W) -> Poll<(), crate::Error>
     where
         E: NewSvcExec<I::Item, S::Future, S::Service, E, W>,
         W: Watcher<I::Item, S::Service, E>,
@@ -727,9 +727,9 @@ pub(crate) mod spawn_all {
     use futures::{Future, Poll};
     use tokio_io::{AsyncRead, AsyncWrite};
 
-    use body::{Body, Payload};
-    use common::exec::H2Exec;
-    use service::Service;
+    use crate::body::{Body, Payload};
+    use crate::common::exec::H2Exec;
+    use crate::service::Service;
     use super::{Connecting, UpgradeableConnection};
 
     // Used by `SpawnAll` to optionally watch a `Connection` future.
@@ -741,7 +741,7 @@ pub(crate) mod spawn_all {
     // connections, and signal that they start to shutdown when prompted, so
     // it has a `GracefulWatcher` implementation to do that.
     pub trait Watcher<I, S: Service, E>: Clone {
-        type Future: Future<Item=(), Error=::Error>;
+        type Future: Future<Item=(), Error=crate::Error>;
 
         fn watch(&self, conn: UpgradeableConnection<I, S, E>) -> Self::Future;
     }
@@ -810,7 +810,7 @@ pub(crate) mod spawn_all {
                         let conn = try_ready!(connecting
                             .poll()
                             .map_err(|err| {
-                                let err = ::Error::new_user_new_service(err);
+                                let err = crate::Error::new_user_new_service(err);
                                 debug!("connection error: {}", err);
                             }));
                         let connected = watcher.watch(conn.with_upgrades());
@@ -873,7 +873,7 @@ mod upgrades {
         E: super::H2Exec<S::Future, B>,
     {
         type Item = ();
-        type Error = ::Error;
+        type Error = crate::Error;
 
         fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
             loop {

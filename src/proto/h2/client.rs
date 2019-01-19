@@ -5,15 +5,15 @@ use futures::sync::mpsc;
 use h2::client::{Builder, Handshake, SendRequest};
 use tokio_io::{AsyncRead, AsyncWrite};
 
-use headers::content_length_parse_all;
-use body::Payload;
-use ::common::{Exec, Never};
-use headers;
-use ::proto::Dispatched;
+use crate::headers::content_length_parse_all;
+use crate::body::Payload;
+use crate::common::{Exec, Never};
+use crate::headers;
+use crate::proto::Dispatched;
 use super::{PipeToSendStream, SendBuf};
-use ::{Body, Request, Response};
+use crate::{Body, Request, Response};
 
-type ClientRx<B> = ::client::dispatch::Receiver<Request<B>, Response<Body>>;
+type ClientRx<B> = crate::client::dispatch::Receiver<Request<B>, Response<Body>>;
 /// An mpsc channel is used to help notify the `Connection` task when *all*
 /// other handles to it have been dropped, so that it can shutdown.
 type ConnDropRef = mpsc::Sender<Never>;
@@ -57,13 +57,13 @@ where
     B: Payload + 'static,
 {
     type Item = Dispatched;
-    type Error = ::Error;
+    type Error = crate::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         loop {
             let next = match self.state {
                 State::Handshaking(ref mut h) => {
-                    let (request_tx, conn) = try_ready!(h.poll().map_err(::Error::new_h2));
+                    let (request_tx, conn) = try_ready!(h.poll().map_err(crate::Error::new_h2));
                     // An mpsc channel is used entirely to detect when the
                     // 'Client' has been dropped. This is to get around a bug
                     // in h2 where dropping all SendRequests won't notify a
@@ -98,7 +98,7 @@ where
                     State::Ready(request_tx, tx)
                 },
                 State::Ready(ref mut tx, ref conn_dropper) => {
-                    try_ready!(tx.poll_ready().map_err(::Error::new_h2));
+                    try_ready!(tx.poll_ready().map_err(crate::Error::new_h2));
                     match self.rx.poll() {
                         Ok(Async::Ready(Some((req, mut cb)))) => {
                             // check that future hasn't been canceled already
@@ -117,7 +117,7 @@ where
                                 Ok(ok) => ok,
                                 Err(err) => {
                                     debug!("client send request error: {}", err);
-                                    let _ = cb.send(Err((::Error::new_h2(err), None)));
+                                    let _ = cb.send(Err((crate::Error::new_h2(err), None)));
                                     continue;
                                 }
                             };
@@ -146,12 +146,12 @@ where
                                         Ok(res) => {
                                             let content_length = content_length_parse_all(res.headers());
                                             let res = res.map(|stream|
-                                                ::Body::h2(stream, content_length));
+                                                crate::Body::h2(stream, content_length));
                                             let _ = cb.send(Ok(res));
                                         },
                                         Err(err) => {
                                             debug!("client response error: {}", err);
-                                            let _ = cb.send(Err((::Error::new_h2(err), None)));
+                                            let _ = cb.send(Err((crate::Error::new_h2(err), None)));
                                         }
                                     }
                                     Ok(())

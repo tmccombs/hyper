@@ -2,7 +2,7 @@ use std::error::Error as StdError;
 
 use futures::{Future, IntoFuture};
 
-use body::Payload;
+use crate::body::Payload;
 use super::{MakeService, Service};
 
 /// An asynchronous constructor of `Service`s.

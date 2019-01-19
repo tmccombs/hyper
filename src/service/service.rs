@@ -4,9 +4,9 @@ use std::marker::PhantomData;
 
 use futures::{future, Future, IntoFuture};
 
-use body::Payload;
-use common::Never;
-use ::{Request, Response};
+use crate::body::Payload;
+use crate::common::Never;
+use crate::{Request, Response};
 
 /// An asynchronous function from `Request` to `Response`.
 pub trait Service {
