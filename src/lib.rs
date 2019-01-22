@@ -4,6 +4,8 @@
 #![cfg_attr(test, deny(warnings))]
 #![cfg_attr(all(test, feature = "nightly"), feature(test))]
 
+#![feature(futures_api, async_await, await_macro)]
+
 //! # hyper
 //!
 //! hyper is a **fast** and **correct** HTTP implementation written in and for Rust.

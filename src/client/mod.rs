@@ -85,6 +85,7 @@ use std::time::Duration;
 use futures::{Async, Future, Poll};
 use futures::future::{self, Either, Executor};
 use futures::sync::oneshot;
+use futures_preview::{Future as Future03, compat::Future01CompatExt};
 use http::{Method, Request, Response, Uri, Version};
 use http::header::{HeaderValue, HOST};
 use http::uri::Scheme;
@@ -195,7 +196,7 @@ where C: Connect + Sync + 'static,
     /// # }
     /// # fn main() {}
     /// ```
-    pub fn get(&self, uri: Uri) -> ResponseFuture
+    pub fn get(&self, uri: Uri) -> impl Future03<Output=crate::Result<Response<Body>>>
     where
         B: Default,
     {
@@ -231,17 +232,19 @@ where C: Connect + Sync + 'static,
     /// # }
     /// # fn main() {}
     /// ```
-    pub fn request(&self, mut req: Request<B>) -> ResponseFuture {
+    pub fn request(&self, mut req: Request<B>) -> impl Future03<Output=crate::Result<Response<Body>>> {
+        let client = self.clone();
+        async move {
         let is_http_connect = req.method() == &Method::CONNECT;
         match req.version() {
             Version::HTTP_11 => (),
             Version::HTTP_10 => if is_http_connect {
                 debug!("CONNECT is not allowed for HTTP/1.0");
-                return ResponseFuture::new(Box::new(future::err(crate::Error::new_user_unsupported_request_method())));
+                return Err(crate::Error::new_user_unsupported_request_method());
             },
-            other => if self.config.ver != Ver::Http2 {
+            other => if client.config.ver != Ver::Http2 {
                 error!("Request has unsupported version \"{:?}\"", other);
-                return ResponseFuture::new(Box::new(future::err(crate::Error::new_user_unsupported_version())));
+                return Err(crate::Error::new_user_unsupported_version());
             }
         };
 
@@ -266,12 +269,13 @@ where C: Connect + Sync + 'static,
             },
             _ => {
                 debug!("Client requires absolute-form URIs, received: {:?}", uri);
-                return ResponseFuture::new(Box::new(future::err(crate::Error::new_user_absolute_uri_required())))
+                return Err(crate::Error::new_user_absolute_uri_required());
             }
         };
 
         let pool_key = Arc::new(domain.to_string());
-        ResponseFuture::new(Box::new(self.retryably_send_request(req, pool_key)))
+        await!(client.retryably_send_request(req, pool_key).compat())
+        }
     }
 
     fn retryably_send_request(&self, req: Request<B>, pool_key: PoolKey) -> impl Future<Item=Response<Body>, Error=crate::Error> {
@@ -591,37 +595,6 @@ impl<C, B> fmt::Debug for Client<C, B> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Client")
             .finish()
-    }
-}
-
-/// A `Future` that will resolve to an HTTP Response.
-///
-/// This is returned by `Client::request` (and `Client::get`).
-#[must_use = "futures do nothing unless polled"]
-pub struct ResponseFuture {
-    inner: Box<Future<Item=Response<Body>, Error=crate::Error> + Send>,
-}
-
-impl ResponseFuture {
-    fn new(fut: Box<Future<Item=Response<Body>, Error=crate::Error> + Send>) -> Self {
-        Self {
-            inner: fut,
-        }
-    }
-}
-
-impl fmt::Debug for ResponseFuture {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.pad("Future<Response>")
-    }
-}
-
-impl Future for ResponseFuture {
-    type Item = Response<Body>;
-    type Error = crate::Error;
-
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        self.inner.poll()
     }
 }
 
