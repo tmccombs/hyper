@@ -780,6 +780,7 @@ where
         E: NewSvcExec<I::Item, S::Future, S::Service, E, W>,
         W: Watcher<I::Item, S::Service, E>,
     {
+        spawn_all::monitor_count();
         loop {
             if let Some(connecting) = try_ready!(self.serve.poll()) {
                 let fut = NewSvcTask::new(connecting, watcher.clone());
@@ -792,6 +793,7 @@ where
 }
 
 pub(crate) mod spawn_all {
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use futures::{Future, Poll};
     use tokio_io::{AsyncRead, AsyncWrite};
 
@@ -799,6 +801,9 @@ pub(crate) mod spawn_all {
     use common::exec::H2Exec;
     use service::Service;
     use super::{Connecting, UpgradeableConnection};
+
+    static COUNT: AtomicUsize = AtomicUsize::new(0);
+    static MONITORS: AtomicUsize = AtomicUsize::new(0);
 
     // Used by `SpawnAll` to optionally watch a `Connection` future.
     //
@@ -831,6 +836,20 @@ pub(crate) mod spawn_all {
         }
     }
 
+    pub(super) fn monitor_count() {
+        use futures::Stream;
+        if MONITORS.swap(1, Ordering::Relaxed) != 0 {
+            return;
+        }
+        let interval = ::tokio::timer::Interval::new_interval(::std::time::Duration::from_secs(1))
+            .for_each(|_| {
+                debug!("NewSvcTask count = {}", COUNT.load(Ordering::Relaxed));
+                Ok(())
+            })
+            .map_err(|_| ());
+        ::tokio::spawn(interval);
+    }
+
     // This is a `Future<Item=(), Error=()>` spawned to an `Executor` inside
     // the `SpawnAll`. By being a nameable type, we can be generic over the
     // user's `Service::Future`, and thus an `Executor` can execute it.
@@ -852,9 +871,18 @@ pub(crate) mod spawn_all {
 
     impl<I, N, S: Service, E, W: Watcher<I, S, E>> NewSvcTask<I, N, S, E, W> {
         pub(super) fn new(connecting: Connecting<I, N, E>, watcher: W) -> Self {
+            trace!("NewSvcTask::new");
+            COUNT.fetch_add(1, Ordering::Relaxed);
             NewSvcTask {
                 state: State::Connecting(connecting, watcher),
             }
+        }
+    }
+
+    impl<I, N, S: Service, E, W: Watcher<I, S, E>> Drop for NewSvcTask<I, N, S, E, W> {
+        fn drop(&mut self) {
+            COUNT.fetch_sub(1, Ordering::Relaxed);
+            trace!("NewSvcTask::drop({:p})", self)
         }
     }
 
